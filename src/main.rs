@@ -1,19 +1,8 @@
 pub mod string_match{
-    fn str_match(start: usize, text: &str, pattern: &str) -> bool {
-        let p_count = pattern.chars().count();
-        for p_i in 0..p_count {
-            println!("l: {}, r: {}", &text.chars().as_slice()[start+p_i..start+p_i+1], &pattern[p_i..p_i+1]);
-            if text[start+p_i..start+p_i+1] != pattern[p_i..p_i+1] {
-                continue;
-            } else if p_i == p_count - 1{
-                return true;
-            }
-        }
-        false
-    }
+    use std::collections::VecDeque;
 
-    fn string_sum(text: &str) -> i32 {
-        text.as_bytes().iter().map(|byte| *byte as i32).sum::<i32>()
+    fn str_match(start: usize, text: &[char], pattern: &[char]) -> bool {
+        text[start..start+pattern.len()] == pattern[0..pattern.len()]
     }
 
     pub fn naive_match<T,P>(text: T, pattern: P) -> Vec<usize> where T: AsRef<str>, P: AsRef<str> {
@@ -24,7 +13,11 @@ pub mod string_match{
         let p_count = pattern.chars().count();
         if p_count > t_count { panic!("pattern is longer than text"); }
         for t_i in 0..t_count-p_count+1 {
-            if str_match(t_i, &text, &pattern) {
+            if str_match(
+                t_i,
+                &text.chars().collect::<Vec<char>>(),
+                &pattern.chars().collect::<Vec<char>>()
+            ) {
                 matches.push(t_i);
             }
         }
@@ -43,26 +36,46 @@ pub mod string_match{
         naive_match("I am", "sock tube colour nope");
     }
 
-    pub fn rabin_karp<T, H>(text: T, pattern: T, hasher: H) -> Vec<usize>
-    where T: AsRef<str>, H: Fn(i32) -> i32 {
+    pub fn rabin_karp<T>(text: T, pattern: T, d_base: u32, q_prime: u32) -> Vec<usize> where T: AsRef<str> {
         let mut matches= vec![];
+
         let text = text.as_ref();
         let pattern = pattern.as_ref();
-        let p_count = pattern.chars().count();
-        let hashed_pattern = hasher(string_sum(pattern));
-        println!("{}: {}", "Pattern", hashed_pattern);
-        let mut sum_text_slice = string_sum(&text[0..p_count]);
-        for (idx, char) in text.chars().skip(p_count-1).enumerate() {
-            if idx != 0 {
-                if let Some(former) = text.chars().nth(idx-1){
-                    let previous = string_sum(&former.to_string());
-                    let next = string_sum(&char.to_string());
-                    sum_text_slice += next - previous;
-                }
+
+        // let n = text.chars().count();
+        let m = pattern.chars().count();
+
+        let h = d_base.pow(m as u32 - 1) % q_prime;
+        let mut p = 0;
+        let mut t_s = 0;
+
+        let mut buffer = VecDeque::<char>::with_capacity(m+1);
+
+        for (_i, (p_i, t_i)) in pattern.chars().zip(text.chars()).enumerate(){
+            p = (d_base * p + p_i as u32) % q_prime;
+            t_s = (d_base * t_s + t_i as u32) % q_prime;
+            buffer.push_back(t_i);
+        }
+
+        // println!("0: {:?}\n{}", buffer, t_s);
+        let mut iter = text.chars().skip(m);
+        let mut i = 0;
+        loop {
+            if t_s == p {
+                matches.push(i);
             }
-            println!("{}: {}", idx, hasher(sum_text_slice));
-            if hasher(sum_text_slice) == hashed_pattern && str_match(idx, text, pattern) {
-                matches.push(idx);
+            if let (Some(pop), Some(push)) = (buffer.pop_front(),iter.next()) {
+                i += 1;
+                // println!("was: {}", t_s);
+                // println!("pop: {}",(pop as u32 * h) % q_prime);
+                // println!("push: {}",(push as u32) % q_prime);
+                let t_next = ((t_s as i32 - (pop as u32 * h) as i32) * d_base as i32 + (push as u32) as i32).rem_euclid(q_prime as i32);
+                // println!("is: {}", t_next);
+                t_s = t_next as u32;
+                buffer.push_back(push);
+                // println!("{}: {:?}\n{}", i, buffer, t_s);
+            } else {
+                break;
             }
         }
         matches
@@ -73,7 +86,8 @@ fn main() {
     let results = string_match::rabin_karp(
         "I am sock  söck a sock",
         "sock",
-        |input| input % 16
+        256u32,
+        101u32
     );
     println!("{:?}", results);
 }
