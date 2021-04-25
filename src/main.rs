@@ -85,7 +85,7 @@ pub mod string_match{
         matches
     }
 
-    struct Automat{
+    pub struct Automat{
         accept: usize,
         transition_functions: HashMap<
             (usize, char), usize
@@ -93,7 +93,7 @@ pub mod string_match{
     }
 
     impl Automat{
-        fn new(pattern: &Vec<char>) -> Self{
+        pub fn new(pattern: &Vec<char>) -> Self{
             let mut alphabet = pattern.clone();
             alphabet.sort_unstable();
             alphabet.dedup();
