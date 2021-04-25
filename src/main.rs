@@ -1,7 +1,11 @@
-pub mod string_match{
-    use std::collections::VecDeque;
+use std::fs::File;
 
-    fn str_match(start: usize, text: &[char], pattern: &[char]) -> bool {
+use seq_io::fasta::Reader;
+
+pub mod string_match{
+    use std::collections::{HashMap, VecDeque};
+
+    fn str_match<T>(start: usize, text: &[T], pattern: &[T]) -> bool where T: Eq {
         text[start..start+pattern.len()] == pattern[0..pattern.len()]
     }
 
@@ -80,6 +84,108 @@ pub mod string_match{
         }
         matches
     }
+
+    struct Automat{
+        accept: usize,
+        transition_functions: HashMap<
+            (usize, char), usize
+        >,
+    }
+
+    impl Automat{
+        fn new(pattern: &Vec<char>) -> Self{
+            let mut alphabet = pattern.clone();
+            alphabet.sort_unstable();
+            alphabet.dedup();
+            let mut transition_functions = HashMap::new();
+            // println!("ALPHA {:?}", alphabet);
+            for idx in 0..=pattern.len() {
+                for a in &alphabet {
+                    if idx < pattern.len() && pattern[idx] == *a {
+                        transition_functions.insert(
+                            (idx, *a),
+                            idx+1
+                        );
+                    } else {
+                        // println!("({}, {}): {}", idx, a, &pattern[0..idx].iter().collect::<String>());
+                        // have we seen the pattern before?
+                        // What we seen so far...
+                        let slice = [&pattern[0..idx], &[*a]].concat();
+                        let pos = Automat::sigma_suffix(slice.as_slice());
+                        if pos != 0 {
+                            transition_functions.insert(
+                                (idx, *a),
+                                pos
+                            );
+                        }
+                        // println!("next: {}\nslice: {}\nposition: {}", a, slice.iter().collect::<String>(), pos);
+                    }
+                }
+            }
+            // println!("{:#?}", transition_functions);
+
+            Self{
+                accept: pattern.len(),
+                transition_functions
+            }
+        }
+
+        /// Return the length of the longest prefix that is also a suffix
+        fn sigma_suffix(x: &[char]) -> usize{
+            //P_k is a prefix of P of the length k
+            for k in 1..x.len() {
+                let prefix = &x[0..x.len()-k];
+                let suffix = &x[k..x.len()];
+                // println!(
+                //     "pre: {}\nsuf: {}",
+                //     prefix.iter().collect::<String>(),
+                //     suffix.iter().collect::<String>()
+                // );
+                if prefix == suffix {
+                    return prefix.len();
+                }
+            }
+            0
+        }
+
+        pub fn match_text(&self, text: &[char]) -> Vec<usize> {
+            let mut matches = vec![];
+            let mut start = 0;
+            for (idx, char) in text.iter().enumerate(){
+                start = *self.transition_functions.get(&(start, *char)).unwrap_or(&0);
+                if start == self.accept {
+                    matches.push(idx-self.accept+1);
+                }
+            }
+            matches
+        }
+    }
+
+    #[test]
+    fn test_sigma() {
+        let func = Automat::sigma_suffix;
+        let result = func(&['a', 'a', 'b', 'a', 'a', 'a']);
+        // println!("longest prefix that is also suffix: {}", result);
+        assert_eq!(2, result);
+        assert_eq!(1, func(&['a','b','a']));
+    }
+
+    #[test]
+    fn test_automat() {
+        // Automat::new(&"ababbabbababb".chars().collect());
+        let auto = Automat::new(&"aabab".chars().collect());
+        let result = auto.match_text("aaababaabaababaab".chars().collect::<Vec<char>>().as_slice());
+        assert_eq!(vec![1, 9],result);
+    }
+
+    fn knuth_morris_pratt(text: Vec<char>, pattern: Vec<char>) {
+
+    }
+}
+
+struct SampleSet{
+    target: String,
+    patterns: Vec<String> 
 }
 
 fn main() {
@@ -90,4 +196,63 @@ fn main() {
         101u32
     );
     println!("{:?}", results);
+
+    let target_gen = Reader::from_path("./data/gen.fasta").unwrap().records().next().unwrap().unwrap().seq.iter().map(|x| *x as char).collect::<String>();
+    let sample_sets = vec![
+        SampleSet{
+            target: "./data/text.fasta".into(),
+            patterns: vec![
+                "Besen".into(),
+                "Wasserstroeme".into(),
+                "Eimer".into()
+            ]
+        },
+        SampleSet{
+            target: "./data/Virus.fasta".into(),
+            patterns: vec![
+                "GTATTA".into(),
+                "TTTCGAAA".into(),
+                "AAATTGACG".into()
+            ]
+        },
+        SampleSet{
+            target: "./data/BA000002.fna".into(),
+            patterns: vec![
+                "GAATTC".into(),
+                "GGATCC".into(),
+                "ATTTAAAT".into(),
+                target_gen
+            ]
+        }
+    ];
+
+    for sample_set in sample_sets{
+        if let Ok(reader) = Reader::from_path(&sample_set.target) {
+            for cord in reader.into_records() {
+                if let Ok(rec) = cord{
+                    let search_source = rec.seq.iter().map(|x| *x as char).collect::<String>();
+                    let now = std::time::Instant::now();
+                    for word in &sample_set.patterns {
+                        let result = string_match::rabin_karp(&search_source, &word, 1u32, 101u32);
+                        // println!("Searched: {}, Found at: {:?}", word, result);
+                    }
+                    println!("Search in '{}' took: {}ms", sample_set.target, now.elapsed().as_millis());
+                }
+            }
+        }
+    }
+
+    // if let Ok(reader) = Reader::from_path("./data/text.fasta") {
+    //     for cord in reader.into_records() {
+    //         if let Ok(rec) = cord{
+    //             let search_source = rec.seq.iter().map(|x| *x as char).collect::<String>();
+    //             let now = std::time::Instant::now();
+    //             for word in &["Besen", "Wasserstroeme", "Eimer"]{
+    //                 let result = string_match::rabin_karp(&search_source, &word.chars().collect::<String>(), 2u32, 101u32);
+    //                 println!("Searched: {}, Found at: {:?}", word, result);
+    //             }
+    //             println!("Search took: {}ms", now.elapsed().as_millis());
+    //         }
+    //     }
+    // }
 }
