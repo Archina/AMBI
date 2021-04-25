@@ -85,6 +85,10 @@ pub mod string_match{
         matches
     }
 
+    pub trait TextMatch{
+        fn match_text(&self, text: &[char]) -> Vec<usize>;
+    }
+
     pub struct Automat{
         accept: usize,
         transition_functions: HashMap<
@@ -147,8 +151,10 @@ pub mod string_match{
             }
             0
         }
+    }
 
-        pub fn match_text(&self, text: &[char]) -> Vec<usize> {
+    impl TextMatch for Automat {
+        fn match_text(&self, text: &[char]) -> Vec<usize> {
             let mut matches = vec![];
             let mut start = 0;
             for (idx, char) in text.iter().enumerate(){
@@ -178,8 +184,78 @@ pub mod string_match{
         assert_eq!(vec![1, 9],result);
     }
 
-    fn knuth_morris_pratt(text: Vec<char>, pattern: Vec<char>) {
+    pub struct KnuthMorrisPratt{
+        pattern: Vec<char>,
+        pi: HashMap<usize, usize>
+    }
 
+    impl KnuthMorrisPratt{
+        pub fn new(pattern: &[char]) -> Self{
+            let mut pi = HashMap::new();
+            for k in 0..pattern.len() {
+                let to = pattern.len()-k;
+                let slice = &pattern[0..to];
+                let pos = Automat::sigma_suffix(slice);
+                println!("k{}, {:?}: {}", to, slice, pos);
+                pi.insert(to, pos);
+            }
+            println!("{:?}", pi);
+            Self{
+                pattern: pattern.iter().map(|c| *c).collect(),
+                pi
+            }
+        }
+    }
+
+    impl TextMatch for KnuthMorrisPratt {
+        fn match_text(&self, text: &[char]) -> Vec<usize> {
+            let mut matches = vec![];
+            let m = self.pattern.len();
+            let n = text.len();
+            let mut s = 0;
+            let mut q = 1;
+            while s < n-m {
+                println!("s {} q{}, {:?}", s, q, &text[s..s+q]);
+                if text[s+q] != self.pattern[q] {
+                    let k = self.pi[&q];
+                    s += q-k;
+                    q = k;
+                } else {
+                    q += 1;
+                    if q == self.pattern.len() {
+                        matches.push(s);
+
+                        let k = self.pi[&q];
+                        s += q-k;
+                        q = k;
+                    }
+                }
+            }
+            matches
+        }
+    }
+
+    #[test]
+    fn test_knut() {
+        let aaba = KnuthMorrisPratt::new(
+            "aabab".chars().collect::<Vec<char>>().as_slice()
+        );
+
+        let result = aaba.match_text("aaababaabaababaab".chars().collect::<Vec<char>>().as_slice());
+        assert_eq!(vec![1, 9],result);
+
+        let abab = KnuthMorrisPratt::new(
+            // "aaababaabaababaab".chars().collect(),
+            "abab".chars().collect::<Vec<char>>().as_slice()
+        );
+
+        abab.match_text("aaababaabaababaab".chars().collect::<Vec<char>>().as_slice());
+    }
+
+    pub struct BoyerMoore;
+
+    impl BoyerMoore{
+        pub new()
     }
 }
 
