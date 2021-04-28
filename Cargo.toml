@@ -8,3 +8,6 @@ edition = "2018"
 
 [dependencies]
 seq_io = "0.3.1"
+colored="*"
+dialoguer="*"
+fasthash="*"
