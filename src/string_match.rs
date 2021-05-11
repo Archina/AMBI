@@ -1,8 +1,15 @@
 use std::collections::{HashMap, VecDeque};
 use colored::*;
+use primes::PrimeSet;
 
 fn str_match<T>(start: usize, text: &[T], pattern: &[T]) -> bool where T: Eq {
-    text[start..start+pattern.len()] == pattern[0..pattern.len()]
+    // text[start..start+pattern.len()] == pattern[0..pattern.len()]
+    for i in 0..pattern.len() {
+        if text[start+i] != pattern[i] {
+            return false
+        }
+    }
+    true
 }
 
 pub fn naive_match<T,P>(text: T, pattern: P) -> Vec<usize> where T: AsRef<[char]>, P: AsRef<[char]> {
@@ -38,6 +45,72 @@ fn test_naive_crash() {
     naive_match(text.as_slice(), pattern.as_slice());
 }
 
+pub struct RabinKarp{
+    trans_pattern: Vec<u32>,
+    sigma_map: HashMap<char, u32>,
+    d_base: u32,
+    q_prime: u32,
+}
+
+impl RabinKarp{
+    pub fn new(pattern: &[char], sigma: &[char]) -> Self {
+        let sigma_map: HashMap<char, u32> = sigma.iter().enumerate().map(|(idx, char)| (*char, idx as u32)).collect();
+        let d_base = (sigma_map.len() - 1) as u32;
+        let (_, q_prime) = primes::Sieve::new().find(d_base as u64);
+        Self{
+            d_base,
+            trans_pattern: pattern.iter().map(|p| sigma_map[p]).collect(),
+            sigma_map,
+            q_prime: q_prime as u32
+        }
+    }
+}
+
+impl TextMatch for RabinKarp {
+    fn match_text(&self, text: &[char]) -> Vec<usize> {
+        let mut matches= vec![];
+
+        let m = self.trans_pattern.len();
+
+        let trans_text: Vec<u32> = text.iter().map(|p| self.sigma_map[p]).collect();
+
+        let h = self.d_base.pow(m as u32 - 1) % self.q_prime;
+        let mut p = 0;
+        let mut t_s = 0;
+
+        let mut buffer = VecDeque::<u32>::with_capacity(m+1);
+
+        for (_i, (p_i, t_i)) in self.trans_pattern.iter().zip(trans_text.iter()).enumerate(){
+            p = (self.d_base * p + *p_i) % self.q_prime;
+            t_s = (self.d_base * t_s + *t_i) % self.q_prime;
+            buffer.push_back(*t_i);
+        }
+
+        // println!("0: {:?}\n{}", buffer, t_s);
+        let mut iter = trans_text.iter().skip(m);
+        let mut i = 0;
+        loop {
+            if t_s == p && str_match(i, trans_text.as_slice(), self.trans_pattern.as_slice()) {
+                matches.push(i);
+            }
+            if let (Some(pop), Some(push)) = (buffer.pop_front(), iter.next()) {
+                i += 1;
+                // println!("was: {}", t_s);
+                // println!("pop: {}",(pop as u32 * h) % q_prime);
+                // println!("push: {}",(push as u32) % q_prime);
+                let t_next = ((t_s as i32 - (pop * h) as i32) * self.d_base as i32 + *push as i32).rem_euclid(self.q_prime as i32);
+                // println!("is: {}", t_next);
+                t_s = t_next as u32;
+                buffer.push_back(*push);
+                // println!("{}: {:?}\n{}", i, buffer, t_s);
+            } else {
+                break;
+            }
+        }
+        matches
+    }
+}
+
 pub fn rabin_karp<T>(text: T, pattern: T, d_base: u32, q_prime: u32) -> Vec<usize> where T: AsRef<[char]> {
     let mut matches= vec![];
 
@@ -64,6 +137,7 @@ pub fn rabin_karp<T>(text: T, pattern: T, d_base: u32, q_prime: u32) -> Vec<usiz
     let mut i = 0;
     loop {
         if t_s == p {
+            // TODO actual string or u match
             matches.push(i);
         }
         if let (Some(pop), Some(push)) = (buffer.pop_front(),iter.next()) {
@@ -89,8 +163,8 @@ pub trait TextMatch{
 
 pub struct Automat{
     accept: usize,
-    transition_functions: HashMap<
-        (usize, char), usize, fasthash::RandomState::<fasthash::city::Hash64>
+    transition_functions: hashbrown::HashMap<
+        (usize, char), usize
     >,
 }
 
@@ -99,7 +173,7 @@ impl Automat{
         let mut alphabet = pattern.to_vec();
         alphabet.sort_unstable();
         alphabet.dedup();
-        let mut transition_functions = HashMap::with_capacity_and_hasher(alphabet.len() * pattern.len()+1, fasthash::RandomState::<fasthash::city::Hash64>::new());
+        let mut transition_functions = hashbrown::HashMap::with_capacity(alphabet.len() * pattern.len()+1);
         // println!("ALPHA {:?}", alphabet);
         for idx in 0..=pattern.len() {
             for a in &alphabet {
@@ -156,6 +230,7 @@ impl TextMatch for Automat {
         let mut start = 0;
         for (idx, char) in text.iter().enumerate(){
             // start = *self.transitions[start].get(char).unwrap_or(&0);
+            // self.transition_functions[&(start, *char)];
             start = *self.transition_functions.get(&(start, *char)).unwrap_or(&0);
             if start == self.accept {
                 matches.push(idx-self.accept+1);
@@ -221,6 +296,9 @@ impl TextMatch for KnuthMorrisPratt {
         while s < n-m {
             // println!("s {} q{}, {:?}", s, q, &text[s..s+q]);
             if text[s+q] != self.pattern[q] {
+                if None == self.pi.get(&q) {
+                    println!("Crashed at s:{} q:{} pi:{:?}", s, q, self.pi);
+                }
                 let k = self.pi[&q];
                 s += q-k;
                 q = k;
