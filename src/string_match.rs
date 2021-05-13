@@ -1,15 +1,16 @@
-use std::collections::{HashMap, VecDeque};
-use colored::*;
+use std::{collections::{HashMap, VecDeque}};
 use primes::PrimeSet;
 
 fn str_match<T>(start: usize, text: &[T], pattern: &[T]) -> bool where T: Eq {
-    // text[start..start+pattern.len()] == pattern[0..pattern.len()]
-    for i in 0..pattern.len() {
-        if text[start+i] != pattern[i] {
-            return false
-        }
-    }
-    true
+    // Memcompare is way faster
+    text[start..start+pattern.len()] == pattern[0..pattern.len()]
+    // Naive m size pattern
+    // for i in 0..pattern.len() {
+    //     if text[start+i] != pattern[i] {
+    //         return false
+    //     }
+    // }
+    // true
 }
 
 pub fn naive_match<T,P>(text: T, pattern: P) -> Vec<usize> where T: AsRef<[char]>, P: AsRef<[char]> {
@@ -163,23 +164,30 @@ pub trait TextMatch{
 
 pub struct Automat{
     accept: usize,
-    transition_functions: hashbrown::HashMap<
-        (usize, char), usize
+    transition_functions: HashMap<
+        u64, usize
     >,
 }
 
 impl Automat{
+    pub fn prep(u: usize, c: char) -> u64 {
+        u as u64 + ((c as u64) << 32)
+    }
+
     pub fn new(pattern: &[char]) -> Self{
         let mut alphabet = pattern.to_vec();
         alphabet.sort_unstable();
         alphabet.dedup();
-        let mut transition_functions = hashbrown::HashMap::with_capacity(alphabet.len() * pattern.len()+1);
+        let mut transition_functions = 
+        // HashMap::with_capacity_and_hasher(alphabet.len() * pattern.len()+1, BuildHasherDefault::default());
+        //IntMap::default();
+        HashMap::with_capacity(alphabet.len() * pattern.len()+1);
         // println!("ALPHA {:?}", alphabet);
         for idx in 0..=pattern.len() {
             for a in &alphabet {
                 if idx < pattern.len() && pattern[idx] == *a {
                     transition_functions.insert(
-                        (idx, *a),
+                        Automat::prep(idx, *a),
                         idx+1
                     );
                 } else {
@@ -190,7 +198,7 @@ impl Automat{
                     let pos = Automat::sigma_suffix(slice.as_slice());
                     if pos != 0 {
                         transition_functions.insert(
-                            (idx, *a),
+                            Automat::prep(idx, *a),
                             pos
                         );
                     }
@@ -231,7 +239,7 @@ impl TextMatch for Automat {
         for (idx, char) in text.iter().enumerate(){
             // start = *self.transitions[start].get(char).unwrap_or(&0);
             // self.transition_functions[&(start, *char)];
-            start = *self.transition_functions.get(&(start, *char)).unwrap_or(&0);
+            start = *self.transition_functions.get(&Automat::prep(start, *char)).unwrap_or(&0);
             if start == self.accept {
                 matches.push(idx-self.accept+1);
             }

@@ -25,7 +25,6 @@ colored="*"
 dialoguer="*"
 primes="*"
 indexmap="*"
-hashbrown="*"
 
 [[example]]
 name = "test"

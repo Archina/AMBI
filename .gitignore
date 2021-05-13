@@ -1,1 +1,5 @@
 /target
+/.mypy_cache
+flamegraph.svg
+flame.svg
+perf.*
